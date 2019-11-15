@@ -112,9 +112,9 @@ class InstaBot:
             self.unlike_delay = self.time_in_day / self.unlike_per_run
 
         # Follow
-        self.follow_time = self.config.get("follow_time")
-        self.follow_per_run = int(self.config.get("follow_per_run"))
-        self.follow_delay = self.config.get("follow_delay")
+        self.follow_time = self.config.get('follow_time')
+        self.follow_per_run = int(self.config.get('follow_per_run'))
+        self.follow_delay = self.config.get('follow_delay')
         if self.follow_per_run > 0 and not self.follow_delay:
             self.follow_delay = self.time_in_day / self.follow_per_run
 
@@ -524,8 +524,10 @@ class InstaBot:
 
     def get_username_by_user_id(self, user_id):
         try:
-            profile = instaloader.Profile.from_id(self.instaloader.context, user_id)
+            profile = instaloader.Profile.from_id(self.instaloader.context,
+                                                  user_id)
             return profile.username
+
         except Exception as exc:
             logging.exception(exc)
 
@@ -655,20 +657,24 @@ class InstaBot:
             return True
 
     def follow(self, user_id, username=None):
-        """ Send http request to follow """
+        """ Send http request to follow endpoint"""
         if self.login_status:
             url_follow = self.url_follow % user_id
-            if username is None:
+            if not username:
                 username = self.get_username_by_user_id(user_id=user_id)
             try:
                 resp = self.s.post(url_follow)
                 if resp.status_code == 200:
                     self.follow_counter += 1
-                    self.logger.info(f"Followed: {self.url_user(username)} #{self.follow_counter}.")
-                    self.persistence.insert_username(user_id=user_id, username=username)
+                    self.logger.info(f"Followed user #{self.follow_counter}: "
+                                     f"username: {username}, "
+                                     f"url: {self.url_user(username)}")
+                    self.persistence.insert_username(user_id=user_id,
+                                                     username=username)
                 return resp
+
             except:
-                logging.exception("Except on follow!")
+                logging.exception("Except on a follow action!")
         return False
 
     def unfollow(self, user_id, username=""):
@@ -802,7 +808,7 @@ class InstaBot:
         return followers_count
 
     def verify_account_name(self, username):
-        if not (self.keywords and len(self.keywords) > 0):
+        if not self.keywords:
             return True
 
         for keyword in self.keywords:
@@ -810,7 +816,7 @@ class InstaBot:
                 return True
 
         try:
-            url = self.url_user_detail % (username)
+            url = self.url_user_detail % username
             r = self.s.get(url)
             all_data = json.loads(
                 re.search(
@@ -819,37 +825,41 @@ class InstaBot:
                     re.DOTALL,
                 ).group(1)
             )
-            biography = all_data["entry_data"]["ProfilePage"][0][
-                "graphql"
-            ]["user"]["biography"]
+            biography = all_data['entry_data']['ProfilePage'][0][
+                'graphql'
+            ]['user']['biography']
 
             if biography:
                 for keyword in self.keywords:
                     if biography.find(keyword) >= 0:
                         return True
+
         except Exception as exc:
-            self.logger.debug(f"Cannot retrieve user:{username}'s biography")
+            self.logger.debug(f"Cannot retrieve user {username}'s biography")
             self.logger.exception(exc)
 
         self.logger.debug(
-            f"Won't follow {username}: does not meet keywords requirement. Keywords not found."
+            f"Will not follow user {username}: does not meet keywords "
+            f"requirement. Keywords are not found."
         )
 
     def verify_account_followers(self, username):
-        if self.user_min_follow == 0 and self.user_max_follow == 0:
+        if not self.user_min_follow and not self.user_max_follow:
             return True
 
         try:
             followers = self.get_followers_count(username)
             if followers < self.user_min_follow:
                 self.logger.info(
-                    f"Won't follow {username}: does not meet user_min_follow requirement"
+                    f"Will not follow user {username}: does not meet "
+                    f"user_min_follow requirement"
                 )
                 return
 
-            if self.user_max_follow != 0 and followers > self.user_max_follow:
+            if self.user_max_follow and followers > self.user_max_follow:
                 self.logger.info(
-                    f"Won't follow {username}: does not meet user_max_follow requirement"
+                    f"Will not follow user {username}: does not meet "
+                    f"user_max_follow requirement"
                 )
                 return
 
@@ -862,21 +872,22 @@ class InstaBot:
                and self.verify_account_followers(username)
 
     def new_auto_mod_follow(self, media):
-        if self.iteration_ready("follow") and self.follow_per_run != 0 and media:
-            self.init_next_interation("follow")
-            user_id = media["node"]["owner"]["id"]
+        if self.iteration_ready('follow') and self.follow_per_run and media:
+            self.init_next_interation('follow')
+            user_id = media['node']['owner']['id']
             username = self.get_username_by_user_id(user_id)
 
             if not self.verify_account(username):
-                self.logger.debug(f"Not following {username}, the account doesn't meet requirements")
+                self.logger.debug(f"Will not follow user {username}: did not "
+                                  f"pass verification")
                 return False
 
             if self.persistence.check_already_followed(user_id=user_id):
-                self.logger.debug(f"Already followed before {username}")
+                self.logger.debug(f"Already followed user {username} before")
                 return False
 
-            log_string = f"Trying to follow: {username}"
-            self.logger.debug(log_string)
+            self.logger.debug(f"Trying to follow user: id: {user_id}, "
+                              f"username: {username}")
 
             if self.follow(user_id=user_id, username=username):
                 return True

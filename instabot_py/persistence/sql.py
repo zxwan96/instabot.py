@@ -47,7 +47,7 @@ class Persistence(PersistenceBase):
                    .one_or_none() is not None
 
     def check_already_followed(self, user_id):
-        """ controls if user already followed before """
+        """ controls if user was already followed before """
         return self._session.query(Follower) \
                    .filter(Follower.id == user_id) \
                    .one_or_none() is not None
@@ -67,7 +67,9 @@ class Persistence(PersistenceBase):
 
     def insert_username(self, user_id, username):
         """ insert user_id to usernames """
-        follower = Follower(id=user_id, username=username, created=datetime.now(), last_followed=datetime.now())
+        follower = Follower(id=user_id, username=username,
+                            created=datetime.now(),
+                            last_followed=datetime.now())
         self._session.add(follower)
         self._session.commit()
 
