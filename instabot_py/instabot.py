@@ -85,20 +85,8 @@ class InstaBot:
         self.comment_list = self.config.get("comment_list")
 
         self.instaloader = instaloader.Instaloader()
-
-        # Unfollow Criteria & Options
-        self.unfollow_recent_feed = self.str2bool(self.config.get("unfollow_recent_feed"))
-        self.unfollow_not_following = self.str2bool(
-            self.config.get("unfollow_not_following")
-        )
-        self.unfollow_inactive = self.str2bool(self.config.get("unfollow_inactive"))
-        self.unfollow_probably_fake = self.str2bool(
-            self.config.get("unfollow_probably_fake")
-        )
-        self.unfollow_selebgram = self.str2bool(self.config.get("unfollow_selebgram"))
-        self.unfollow_everyone = self.str2bool(self.config.get("unfollow_everyone"))
-
         self.time_in_day = 24 * 60 * 60
+
         # Like
         self.like_per_run = int(self.config.get("like_per_run"))
 
@@ -119,10 +107,29 @@ class InstaBot:
             self.follow_delay = self.time_in_day / self.follow_per_run
 
         # Unfollow
-        self.unfollow_per_run = int(self.config.get("unfollow_per_run"))
-        self.unfollow_delay = self.config.get("unfollow_delay")
+        self.unfollow_per_run = int(self.config.get('unfollow_per_run'))
+        self.unfollow_delay = self.config.get('unfollow_delay')
         if self.unfollow_per_run > 0 and not self.unfollow_delay:
             self.unfollow_delay = self.time_in_day / self.unfollow_per_run
+
+        self.unfollow_everyone = self.str2bool(
+            self.config.get('unfollow_everyone')
+        )
+        self.unfollow_inactive = self.str2bool(
+            self.config.get('unfollow_inactive')
+        )
+        self.unfollow_not_following = self.str2bool(
+            self.config.get('unfollow_not_following')
+        )
+        self.unfollow_probably_fake = self.str2bool(
+            self.config.get('unfollow_probably_fake')
+        )
+        self.unfollow_recent_feed = self.str2bool(
+            self.config.get('unfollow_recent_feed')
+        )
+        self.unfollow_selebgram = self.str2bool(
+            self.config.get('unfollow_selebgram')
+        )
 
         # Comment
         self.comments_per_run = int(self.config.get("comments_per_run"))
@@ -677,10 +684,10 @@ class InstaBot:
                 logging.exception("Except on a follow action!")
         return False
 
-    def unfollow(self, user_id, username=""):
-        """ Send http request to unfollow """
+    def unfollow(self, user_id, username=''):
+        """ Send http request to unfollow endpoint"""
         try:
-            resp = self.s.post(self.url_unfollow % (user_id))
+            resp = self.s.post(self.url_unfollow % user_id)
         except Exception as exc:
             logging.critical("Error while requesting the unfollow endpoint")
             logging.exception(exc)
@@ -688,10 +695,15 @@ class InstaBot:
 
         if resp.status_code == 200:
             self.unfollow_counter += 1
-            self.logger.info(f"Unfollowed: {self.url_user(username)} #{self.unfollow_counter}.")
+            self.logger.info(f"Unfollowed user #{self.unfollow_counter}: "
+                             f"username: {username}, "
+                             f"url: {self.url_user(username)}")
             self.persistence.insert_unfollow_count(user_id=user_id)
             return True
         else:
+            self.logger.info(f"Could not unfollow user {username}: url: "
+                             f"{self.url_user(username)}, status code: "
+                             f"{resp.status_code}. Reason: {resp.text}")
             return False
 
     # Backwards Compatibility for old example.py files
@@ -910,11 +922,13 @@ class InstaBot:
             self.logger.exception(exc)
 
     def new_auto_mod_unfollow(self):
-        if self.iteration_ready("unfollow"):
-            self.init_next_interation("unfollow")
+        if self.iteration_ready('unfollow'):
+            self.init_next_interation('unfollow')
             user = self.persistence.get_username_to_unfollow_random()
             if user:
-                self.logger.debug(f"Trying to unfollow #{self.unfollow_counter + 1}: {user}")
+                self.logger.debug(f"Trying to unfollow user "
+                                  f"#{self.unfollow_counter + 1}: "
+                                  f"{user.username}")
                 if self.auto_unfollow(user):
                     return True
 
@@ -951,12 +965,14 @@ class InstaBot:
             if _username:
                 user_name = _username
             else:
-                self.logger.debug(f"Cannot resolve username from user id: {current_id}")
+                self.logger.debug(f"Cannot resolve username from user id: "
+                                  f"{user_id}")
                 return False
 
         if self.verify_unfollow(user_name):
             return self.unfollow(user_id, user_name)
         else:
+            self.unfollow_counter += 1
             self.persistence.insert_unfollow_count(user_id=user_id)
             return True
 
@@ -966,56 +982,73 @@ class InstaBot:
             return False
 
         if self.unfollow_everyone:
-            self.logger.debug("Ignore verifications, Unfollow everyone flag is set")
+            self.logger.debug("Ignore all verifications, unfollow_everyone flag"
+                              " is set")
             return True
 
-        self.logger.debug(f"Getting user info : {user_name} - "
-                          f"Followers : {user_info.get('followers')} - "
-                          f"Following : {user_info.get('follows')} - "
-                          f"Media : {user_info.get('medias')}")
+        self.logger.debug(f"User {user_name} has: {user_info.get('followers')} "
+                          f"followers, {user_info.get('follows')} followings, "
+                          f"{user_info.get('medias')} medias")
 
         if user_name in self.unfollow_whitelist:
-            self.logger.debug("This account {user_name} is marked in the whitelist")
+            self.logger.debug(f"    > Will not unfollow {user_name}: the user "
+                              f"is in the unfollow whitelist")
             return False
+
         if not self.account_is_followed_by_you(user_info):
-            self.logger.debug("You're not follwing this account")
+            self.logger.debug("    > You are not following this account: set an"
+                              " unfollow flag in database to this followed "
+                              "before user")
             return False
 
-        if self.account_is_selebgram(user_info) and self.unfollow_selebgram:
-            self.logger.debug("This account is a selebgram account")
+        if self.unfollow_selebgram and self.account_is_selebgram(user_info):
+            self.logger.debug(f"    > Unfollowing {user_name}: the user is "
+                              "probably a selebgram account")
             return True
 
-        if self.account_is_fake(user_info) and self.unfollow_probably_fake:
-            self.logger.debug("This account is a fake account")
+        if self.unfollow_probably_fake and self.account_is_fake(user_info):
+            self.logger.debug(f"    > Unfollowing {user_name}: the user is "
+                              f"probably a fake account")
             return True
 
-        if not self.account_is_active(user_info) and self.unfollow_inactive:
-            self.logger.debug("This account is not active")
+        if self.unfollow_inactive and not self.account_is_active(user_info):
+            self.logger.debug(f"    > Unfollowing {user_name}: the user is "
+                              f"not active")
             return True
 
-        if not self.account_is_following_you(user_info) and self.unfollow_not_following:
-            self.logger.debug("This account is not following you")
+        if self.unfollow_not_following and \
+                not self.account_is_following_you(user_info):
+            self.logger.debug(f"    > Unfollowing {user_name}: the user is "
+                              f"not following you")
             return True
 
         return False
 
     def get_user_info(self, user_name):
-        url_tag = self.url_user_detail % (user_name)
+        url_tag = self.url_user_detail % user_name
         try:
             r = self.s.get(url_tag)
-            if r.text.find("The link you followed may be broken, or the page may have been removed.") >= 0:
-                self.logger.debug(f"This account was deleted : {user_name}")
+            if r.text.find("The link you followed may be broken or the page may"
+                           " have been removed.") >= 0:
+                self.logger.debug(f"User {user_name} was deleted")
                 return False
-            raw_data = re.search("window._sharedData = (.*?);</script>", r.text, re.DOTALL).group(1)
-            user_data = json.loads(raw_data)["entry_data"]["ProfilePage"][0]["graphql"]["user"]
-            user_info = dict(follows=user_data["edge_follow"]["count"],
-                             followers=user_data["edge_followed_by"]["count"],
-                             medias=user_data["edge_owner_to_timeline_media"]["count"],
-                             follows_viewer=user_data["follows_viewer"],
-                             followed_by_viewer=user_data["followed_by_viewer"],
-                             requested_by_viewer=user_data["requested_by_viewer"],
-                             has_requested_viewer=user_data["has_requested_viewer"])
+
+            raw_data = re.search("window._sharedData = (.*?);</script>",
+                                 r.text, re.DOTALL).group(1)
+            user_data = json.loads(raw_data)['entry_data']['ProfilePage'][0][
+                'graphql']['user']
+            user_info = dict(follows=user_data['edge_follow']['count'],
+                             followers=user_data['edge_followed_by']['count'],
+                             medias=user_data[
+                                 'edge_owner_to_timeline_media']['count'],
+                             follows_viewer=user_data['follows_viewer'],
+                             followed_by_viewer=user_data['followed_by_viewer'],
+                             requested_by_viewer=user_data[
+                                 'requested_by_viewer'],
+                             has_requested_viewer=user_data[
+                                 'has_requested_viewer'])
             return user_info
+
         except Exception as exc:
             self.logger.exception(exc)
             return None

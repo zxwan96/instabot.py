@@ -75,11 +75,12 @@ class Persistence(PersistenceBase):
 
     def insert_unfollow_count(self, user_id=None, username=None):
         """ track unfollow count for new futures """
-
         if user_id:
-            follower = self._session.query(Follower).filter(Follower.id == user_id).first()
+            follower = self._session.query(Follower).filter(Follower.id ==
+                                                            user_id).first()
         elif username:
-            follower = self._session.query(Follower).filter(Follower.username == username).first()
+            follower = self._session.query(Follower).filter(Follower.username ==
+                                                            username).first()
         else:
             return
 
@@ -92,7 +93,8 @@ class Persistence(PersistenceBase):
         return str(follower.username) if follower else None
 
     def get_username_to_unfollow_random(self):
-        """ Gets random username that is older than follow_time and has zero unfollow_count """
+        """ Gets random username that is older than follow_time and has zero
+        unfollow_count """
         now_time = datetime.now()
         if self.bot.follow_time > 0:
             cut_off_time = now_time - timedelta(seconds=self.bot.follow_time)
