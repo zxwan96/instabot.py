@@ -15,3 +15,38 @@ unfollow_selebgram: false
 unfollow_probably_fake: true
 unfollow_inactive: true
 unfollow_recent_feed: false
+tag_list: ["follow4follow", "f4f", "cute"]
+comment_list: [
+        ["this", "the", "your"],
+        ["photo", "picture", "pic", "shot", "snapshot"],
+        ["is", "looks", "feels", "is really"],
+        [
+            "great",
+            "super",
+            "good",
+            "very good",
+            "good",
+            "wow",
+            "WOW",
+            "cool",
+            "GREAT",
+            "magnificent",
+            "magical",
+            "very cool",
+            "stylish",
+            "beautiful",
+            "so beautiful",
+            "so stylish",
+            "so professional",
+            "lovely",
+            "so lovely",
+            "very lovely",
+            "glorious",
+            "so glorious",
+            "very glorious",
+            "adorable",
+            "excellent",
+            "amazing",
+        ],
+        [".", "..", "...", "!", "!!", "!!!"],
+    ]
