@@ -82,7 +82,7 @@ class InstaBot:
         self.user_blacklist = self.config.get("user_blacklist")
         self.tag_blacklist = self.config.get("tag_blacklist")
         self.unfollow_whitelist = self.config.get("unfollow_whitelist")
-        self.comment_list = self.config.get("comment_list")
+        self.comment_list = self.config.get('comment_list')
 
         self.instaloader = instaloader.Instaloader()
         self.time_in_day = 24 * 60 * 60
@@ -132,8 +132,8 @@ class InstaBot:
         )
 
         # Comment
-        self.comments_per_run = int(self.config.get("comments_per_run"))
-        self.comments_delay = self.config.get("comments_delay")
+        self.comments_per_run = int(self.config.get('comments_per_run'))
+        self.comments_delay = self.config.get('comments_delay')
         if self.comments_per_run > 0 and not self.comments_delay:
             self.comments_delay = self.time_in_day / self.comments_per_run
 
@@ -649,18 +649,22 @@ class InstaBot:
         return False
 
     def comment(self, media_id, comment_text):
-        """ Send http request to comment """
-        self.logger.info(f"Trying to comment: {media_id} {self.get_media_url(media_id)}")
-        url_comment = self.url_comment % (media_id)
+        """ Send http request to comment endpoint """
+        self.logger.info(f"Trying to comment {media_id}, url: "
+                         f"{self.get_media_url(media_id)}")
+        url_comment = self.url_comment % media_id
+
         try:
-            resp = self.s.post(url_comment, data={"comment_text": comment_text})
+            resp = self.s.post(url_comment, data={'comment_text': comment_text})
         except Exception as exc:
             logging.exception(exc)
             return False
 
         if resp.status_code == 200:
             self.comments_counter += 1
-            self.logger.info(f"Comment: {comment_text}. #{self.comments_counter}.")
+            self.logger.info(f"Comment #{self.comments_counter}: "
+                             f"'{comment_text}' on media {media_id}, url: "
+                             f"{self.get_media_url(media_id)}")
             return True
 
     def follow(self, user_id, username=None):
@@ -747,9 +751,10 @@ class InstaBot:
                 and self.comments_counter > self.comments_per_run:
             self.prog_run = False
 
-        if self.iteration_ready("follow") or self.iteration_ready("unfollow") \
-                or self.iteration_ready("unlike") or self.iteration_ready("like") \
-                or self.iteration_ready("comments"):
+        if self.iteration_ready('follow') or self.iteration_ready('unfollow') \
+                or self.iteration_ready('like') \
+                or self.iteration_ready('unlike') \
+                or self.iteration_ready('comments'):
             return True
         else:
             time.sleep(1)
@@ -1071,16 +1076,18 @@ class InstaBot:
         return user_info.get("followed_by_viewer") or user_info.get("requested_by_viewer")
 
     def new_auto_mod_comments(self, media):
-        if self.iteration_ready("comments") and self.verify_media_before_comment(media):
-            self.init_next_interation("comments")
+        if self.iteration_ready('comments') and \
+                self.verify_media_before_comment(media):
+            self.init_next_interation('comments')
             comment_text = self.generate_comment()
             if "@username@" in comment_text:
-                comment_text = comment_text.replace("@username@", media["node"]["owner"]["username"])
+                comment_text = comment_text.replace('@username@', media[
+                    'node']['owner']['username'])
 
-            media_id = media["node"]["id"]
+            media_id = media['node']['id']
 
             if not self.comment(media_id, comment_text):
-                self.persistence.insert_media(media["node"]["id"], "Error")
+                self.persistence.insert_media(media['node']['id'], 'Error')
 
     def init_next_interation(self, action):
         self.next_iteration[action] = self.generate_time(
@@ -1099,26 +1106,27 @@ class InstaBot:
     def generate_comment(self):
         c_list = list(itertools.product(*self.comment_list))
 
-        repl = [("  ", " "), (" .", "."), (" !", "!")]
-        res = " ".join(random.choice(c_list))
+        repl = [('  ', ' '), (' .', '.'), (' !', '!')]
+        res = ' '.join(random.choice(c_list))
         for s, r in repl:
             res = res.replace(s, r)
         return res.capitalize()
 
     def verify_media_before_comment(self, media):
-        media_code = media["node"]["shortcode"]
-        url_check = self.url_media % (media_code)
+        media_code = media['node']['shortcode']
+        url_check = self.url_media % media_code
         try:
             resp = self.s.get(url_check)
         except Exception as exc:
-            self.logger.warning(f"Couldn't comment post {url_check}")
+            self.logger.warning(f"Could not comment media {media_code}, url: "
+                                f"{url_check}: status code: {resp.status_code}."
+                                f" Reason: {resp.text}")
             self.logger.exception(exc)
             return False
 
-        if "dialog-404" in resp.text:
-            self.logger.warning(
-                f"Tried to comment {media_code} but it doesn't exist (404). Resuming..."
-            )
+        if 'dialog-404' in resp.text:
+            self.logger.warning(f"Tried to comment media {media_code}, url: "
+                                f"{url_check}: it does not exist anymore")
             return False
 
         if resp.status_code == 200:
@@ -1127,27 +1135,35 @@ class InstaBot:
                 re.DOTALL).group(1)
             all_data = json.loads(raw_data)
 
-            if all_data["graphql"]["shortcode_media"]["owner"]["id"] == self.user_id:
-                self.logger.debug("This media is yours.")
+            if all_data['graphql']['shortcode_media']['owner']['id'] == \
+                    self.user_id:
+                self.logger.debug(f"This media {media_code}, url: {url_check} "
+                                  f"is yours")
                 return False
-            try:
-                edges = all_data["graphql"]["shortcode_media"].get("edge_media_to_comment", None)
-                if not edges:
-                    edges = all_data["graphql"]["shortcode_media"].get("edge_media_to_parent_comment", None)
 
-                comments = list(edges["edges"])
+            try:
+                edges = all_data['graphql']['shortcode_media'].get(
+                    'edge_media_to_comment', None)
+                if not edges:
+                    edges = all_data['graphql']['shortcode_media'].get(
+                        'edge_media_to_parent_comment', None)
+
+                comments = list(edges['edges'])
             except Exception as exc:
-                self.logger.critical("Cannot retrieve comments from media. ")
+                self.logger.critical(f"Could not retrieve comments from media "
+                                     f"{media_code}, url: {url_check}")
                 self.logger.exception(exc)
 
             for comment in comments:
-                if comment["node"]["owner"]["id"] == self.user_id:
-                    self.logger.debug("Media is already commented")
+                if comment['node']['owner']['id'] == self.user_id:
+                    self.logger.debug(f"This media {media_code}, url: "
+                                      f"{url_check} is already commented")
                     return False
-
             return True
+
         elif resp.status_code == 404:
-            self.logger.warning(f"{media_code} doesn't exist (404).")
+            self.logger.warning(f"This media {media_code}, url: {url_check} "
+                                f"does not exist anymore")
             return False
 
     def get_medias_from_recent_feed(self):
