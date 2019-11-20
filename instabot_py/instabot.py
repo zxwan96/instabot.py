@@ -699,10 +699,10 @@ class InstaBot:
 
         if resp.status_code == 200:
             self.unfollow_counter += 1
+            self.persistence.insert_unfollow_count(user_id=user_id)
             self.logger.info(f"Unfollowed user #{self.unfollow_counter}: "
                              f"username: {username}, "
                              f"url: {self.url_user(username)}")
-            self.persistence.insert_unfollow_count(user_id=user_id)
             return True
         else:
             self.logger.info(f"Could not unfollow user {username}: url: "
@@ -974,12 +974,18 @@ class InstaBot:
                                   f"{user_id}")
                 return False
 
-        if self.verify_unfollow(user_name):
+        verify_unfollow_result = self.verify_unfollow(user_name)
+
+        if verify_unfollow_result == 'unfollow':
             return self.unfollow(user_id, user_name)
-        else:
-            self.unfollow_counter += 1
+        elif verify_unfollow_result == 'skip':
+            self.persistence.update_follow_time(user_id=user_id)
+            return True
+        elif verify_unfollow_result == 'database':
             self.persistence.insert_unfollow_count(user_id=user_id)
             return True
+        else:
+            return False
 
     def verify_unfollow(self, user_name):
         user_info = self.get_user_info(user_name)
@@ -989,7 +995,7 @@ class InstaBot:
         if self.unfollow_everyone:
             self.logger.debug("Ignore all verifications, unfollow_everyone flag"
                               " is set")
-            return True
+            return 'unfollow'
 
         self.logger.debug(f"User {user_name} has: {user_info.get('followers')} "
                           f"followers, {user_info.get('follows')} followings, "
@@ -998,36 +1004,41 @@ class InstaBot:
         if user_name in self.unfollow_whitelist:
             self.logger.debug(f"    > Will not unfollow {user_name}: the user "
                               f"is in the unfollow whitelist")
-            return False
+            return 'skip'
 
         if not self.account_is_followed_by_you(user_info):
             self.logger.debug("    > You are not following this account: set an"
                               " unfollow flag in database to this followed "
                               "before user")
-            return False
+            return 'database'
 
         if self.unfollow_selebgram and self.account_is_selebgram(user_info):
             self.logger.debug(f"    > Unfollowing {user_name}: the user is "
                               "probably a selebgram account")
-            return True
+            return 'unfollow'
 
         if self.unfollow_probably_fake and self.account_is_fake(user_info):
             self.logger.debug(f"    > Unfollowing {user_name}: the user is "
                               f"probably a fake account")
-            return True
+            return 'unfollow'
 
         if self.unfollow_inactive and not self.account_is_active(user_info):
             self.logger.debug(f"    > Unfollowing {user_name}: the user is "
                               f"not active")
-            return True
+            return 'unfollow'
 
         if self.unfollow_not_following and \
                 not self.account_is_following_you(user_info):
             self.logger.debug(f"    > Unfollowing {user_name}: the user is "
                               f"not following you")
-            return True
+            return 'unfollow'
+        elif self.unfollow_not_following and \
+                self.account_is_following_you(user_info):
+            self.logger.debug(f"    > Skipping {user_name}: the user is "
+                              f"still following you")
+            return 'skip'
 
-        return False
+        return
 
     def get_user_info(self, user_name):
         url_tag = self.url_user_detail % user_name

@@ -87,6 +87,21 @@ class Persistence(PersistenceBase):
         follower.unfollow_count += 1
         self._session.commit()
 
+    def update_follow_time(self, user_id=None, username=None):
+        """ update follow_time for unfollow whitelist and user still follows
+         you cases"""
+        if user_id:
+            follower = self._session.query(Follower).filter(Follower.id ==
+                                                            user_id).first()
+        elif username:
+            follower = self._session.query(Follower).filter(Follower.username ==
+                                                            username).first()
+        else:
+            return
+
+        follower.last_followed = datetime.now()
+        self._session.commit()
+
     def get_username_random(self):
         """ Gets random username """
         follower = self._session.query(Follower).filter(Follower.unfollow_count == 0).order_by(func.random()).first()
