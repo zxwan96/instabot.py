@@ -855,10 +855,9 @@ class InstaBot:
             self.logger.debug(f"Cannot retrieve user {username}'s biography")
             self.logger.exception(exc)
 
-        self.logger.debug(
-            f"Will not follow user {username}: does not meet keywords "
-            f"requirement. Keywords are not found."
-        )
+        self.logger.debug(f"Will not follow user {username}: does not meet "
+                          f"keywords requirement. Keywords are not found.")
+        return False
 
     def verify_account_followers(self, username):
         if not self.user_min_follow and not self.user_max_follow:
@@ -867,21 +866,19 @@ class InstaBot:
         try:
             followers = self.get_followers_count(username)
             if followers < self.user_min_follow:
-                self.logger.info(
-                    f"Will not follow user {username}: does not meet "
-                    f"user_min_follow requirement"
-                )
-                return
+                self.logger.debug(f"Will not follow user {username}: does not "
+                                  f"meet user_min_follow requirement")
+                return False
 
             if self.user_max_follow and followers > self.user_max_follow:
-                self.logger.info(
-                    f"Will not follow user {username}: does not meet "
-                    f"user_max_follow requirement"
-                )
-                return
+                self.logger.debug(f"Will not follow user {username}: does not "
+                                  f"meet user_max_follow requirement")
+                return False
 
         except Exception as exc:
             self.logger.exception(exc)
+
+        return True
 
     def verify_account(self, username):
         return username != self.login \
@@ -894,17 +891,16 @@ class InstaBot:
             user_id = media['node']['owner']['id']
             username = self.get_username_by_user_id(user_id)
 
+            self.logger.debug(f"Trying to follow user "
+                              f"#{self.follow_counter + 1}: id: {user_id}, "
+                              f"username: {username}")
+
             if not self.verify_account(username):
-                self.logger.debug(f"Will not follow user {username}: did not "
-                                  f"pass verification")
                 return False
 
             if self.persistence.check_already_followed(user_id=user_id):
                 self.logger.debug(f"Already followed user {username} before")
                 return False
-
-            self.logger.debug(f"Trying to follow user: id: {user_id}, "
-                              f"username: {username}")
 
             if self.follow(user_id=user_id, username=username):
                 return True
