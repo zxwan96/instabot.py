@@ -100,6 +100,7 @@ class InstaBot:
             self.unlike_delay = self.time_in_day / self.unlike_per_run
 
         # Follow
+        self.follow_attempts = self.config.get('follow_attempts')
         self.follow_time = self.config.get('follow_time')
         self.follow_per_run = int(self.config.get('follow_per_run'))
         self.follow_delay = self.config.get('follow_delay')
@@ -196,7 +197,6 @@ class InstaBot:
         self.user_password = password
         self.unfollow_from_feed = False
         self.medias = []
-
         self.media_on_feed = []
         self.media_by_user = []
         self.current_owner = ""
@@ -513,6 +513,19 @@ class InstaBot:
 
         return medias
 
+    def get_medias(self):
+        """ Get medias by random tag defined in configuration """
+        tag = random.choice(self.tag_list)
+        medias_raw = self.get_media_id_by_tag(tag)
+        self.logger.debug(f"Retrieved {len(medias_raw)} medias")
+        max_tag_like_count = random.randint(1, self.max_like_for_one_tag)
+        medias = self.remove_already_liked_medias(medias_raw)[
+                 :max_tag_like_count]
+        self.logger.debug(f"Selected {max_tag_like_count} medias to process. "
+                          f"Increase max_like_for_one_tag value for more "
+                          f"processing medias ")
+        return medias
+
     def get_media_url(self, media_id=None, shortcode=None):
         """ Get Media Code or Full Url from Media ID """
         if shortcode:
@@ -668,7 +681,7 @@ class InstaBot:
             return True
 
     def follow(self, user_id, username=None):
-        """ Send http request to follow endpoint"""
+        """ Send http request to follow endpoint """
         if self.login_status:
             url_follow = self.url_follow % user_id
             if not username:
@@ -767,20 +780,33 @@ class InstaBot:
                 continue
             if not self.loop_controller():
                 continue
-
-            if len(medias) == 0:
-                tag = random.choice(self.tag_list)
-                medias_raw = self.get_media_id_by_tag(tag)
-                self.logger.debug(f"Retrieved {len(medias_raw)} medias")
-                max_tag_like_count = random.randint(1, self.max_like_for_one_tag)
-                medias = self.remove_already_liked_medias(medias_raw)[:max_tag_like_count]
-                self.logger.debug(f"Select {max_tag_like_count} medias to process. Increase max_like_for_one_tag value for more processing medias ")
-                continue
+            if not medias:
+                medias = self.get_medias()
 
             media = medias.pop()
             self.new_auto_mod_like(media)
             self.new_auto_mod_unlike()
-            self.new_auto_mod_follow(media)
+
+            if self.iteration_ready('follow') and self.follow_per_run and media:
+                self.init_next_interation('follow')
+                while self.follow_attempts > 0:
+                    if not self.new_auto_mod_follow(media):
+                        time.sleep(5)
+                        if not medias:
+                            medias = self.get_medias()
+                        media = medias.pop()
+                        self.follow_attempts -= 1
+                    else:
+                        self.follow_attempts = self.config.get(
+                            'follow_attempts')
+                        break
+                else:
+                    self.follow_attempts = self.config.get('follow_attempts')
+                    self.logger.debug(f"Could not find user to follow in "
+                                      f"{self.follow_attempts} attempts. If you"
+                                      f" want to increase this number, change"
+                                      f" 'follow_attempts' value")
+
             self.new_auto_mod_unfollow()
             self.new_auto_mod_comments(media)
 
@@ -886,24 +912,24 @@ class InstaBot:
                and self.verify_account_followers(username)
 
     def new_auto_mod_follow(self, media):
-        if self.iteration_ready('follow') and self.follow_per_run and media:
-            self.init_next_interation('follow')
-            user_id = media['node']['owner']['id']
-            username = self.get_username_by_user_id(user_id)
+        user_id = media['node']['owner']['id']
+        username = self.get_username_by_user_id(user_id)
 
-            self.logger.debug(f"Trying to follow user "
-                              f"#{self.follow_counter + 1}: id: {user_id}, "
-                              f"username: {username}")
+        self.logger.debug(f"Trying to follow user #{self.follow_counter + 1}: "
+                          f"id: {user_id}, username: {username}")
 
+        if self.persistence.check_already_followed(user_id=user_id):
+            self.logger.debug(f"Will not follow {username}: user was already "
+                              f"followed before")
+            return False
+        else:
             if not self.verify_account(username):
                 return False
 
-            if self.persistence.check_already_followed(user_id=user_id):
-                self.logger.debug(f"Already followed user {username} before")
-                return False
+        if self.follow(user_id=user_id, username=username):
+            return True
 
-            if self.follow(user_id=user_id, username=username):
-                return True
+        return False
 
     def populate_from_feed(self):
         medias = self.get_medias_from_recent_feed()
@@ -1105,7 +1131,8 @@ class InstaBot:
         action_counter = getattr(self, action + "_counter", 0)
         action_counter_per_run = getattr(self, action + "_per_run", 0)
         registered_time = self.next_iteration.get(action, 0)
-        return action_counter < action_counter_per_run and registered_time >= 0 and time.time() > registered_time
+        return action_counter < action_counter_per_run \
+               and 0 <= registered_time < time.time()
 
     def generate_time(self, time):
         """ Make some random for next iteration"""

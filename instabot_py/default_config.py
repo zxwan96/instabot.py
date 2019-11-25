@@ -89,6 +89,7 @@ DEFAULT_CONFIG = {
     "proxies": {},
     "unfollow_per_day": 0,
     "follow_per_day": 0,
+    "follow_attempts": 10,
     "unwanted_username_list": [],
     "unfollow_whitelist": [],
     "unfollow_inactive": True,
