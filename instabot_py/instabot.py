@@ -986,7 +986,10 @@ class InstaBot:
     def verify_unfollow(self, user_name):
         user_info = self.get_user_info(user_name)
         if not user_info:
-            return False
+            self.logger.debug(f"User {user_name} was deleted: set an "
+                              f"unfollow flag in database to this followed "
+                              f"before user")
+            return 'database'
 
         if self.unfollow_everyone:
             self.logger.debug("Ignore all verifications, unfollow_everyone flag"
@@ -1040,9 +1043,7 @@ class InstaBot:
         url_tag = self.url_user_detail % user_name
         try:
             r = self.s.get(url_tag)
-            if r.text.find("The link you followed may be broken or the page may"
-                           " have been removed.") >= 0:
-                self.logger.debug(f"User {user_name} was deleted")
+            if r.status_code == 404:
                 return False
 
             raw_data = re.search("window._sharedData = (.*?);</script>",
