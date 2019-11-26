@@ -486,28 +486,25 @@ class InstaBot:
     def get_media_id_by_tag(self, tag):
         """ Get media ID set, by your hashtag or location """
         medias = None
-        if tag.startswith("l:"):
-            tag = tag.replace("l:", "")
-            self.logger.info(f"Get Media by location: {tag}")
-            url_location = self.url_location % (tag)
+        if tag.startswith('l:'):
+            tag = tag.replace('l:', '')
+            self.logger.debug(f"Getting media by location: {tag}")
+            url_location = self.url_location % tag
             r = self.s.get(url_location)
             try:
                 all_data = json.loads(r.text)
-                medias = list(
-                    all_data["graphql"]["location"]["edge_location_to_media"]["edges"]
-                )
+                medias = list(all_data['graphql']['location'][
+                                  'edge_location_to_media']['edges'])
             except Exception as exc:
-
                 self.logger.exception(exc)
         else:
-            self.logger.debug(f"Get Media by tag: {tag}")
-            url_tag = self.url_tag % (tag)
+            self.logger.debug(f"Getting media by tag: {tag}")
+            url_tag = self.url_tag % tag
             r = self.s.get(url_tag)
             try:
                 all_data = json.loads(r.text)
-                medias = list(
-                    all_data["graphql"]["hashtag"]["edge_hashtag_to_media"]["edges"]
-                )
+                medias = list(all_data['graphql']['hashtag'][
+                                  'edge_hashtag_to_media']['edges'])
             except Exception as exc:
                 self.logger.exception(exc)
 
@@ -515,15 +512,18 @@ class InstaBot:
 
     def get_medias(self):
         """ Get medias by random tag defined in configuration """
-        tag = random.choice(self.tag_list)
-        medias_raw = self.get_media_id_by_tag(tag)
-        self.logger.debug(f"Retrieved {len(medias_raw)} medias")
-        max_tag_like_count = random.randint(1, self.max_like_for_one_tag)
-        medias = self.remove_already_liked_medias(medias_raw)[
-                 :max_tag_like_count]
-        self.logger.debug(f"Selected {max_tag_like_count} medias to process. "
-                          f"Increase max_like_for_one_tag value for more "
-                          f"processing medias ")
+        while True:
+            tag = random.choice(self.tag_list)
+            medias_raw = self.get_media_id_by_tag(tag)
+            self.logger.debug(f"Retrieved {len(medias_raw)} medias")
+            max_tag_like_count = random.randint(1, self.max_like_for_one_tag)
+            medias = self.remove_already_liked_medias(medias_raw)[
+                     :max_tag_like_count]
+            self.logger.debug(f"Selected {len(medias)} medias to process. "
+                              f"Increase max_like_for_one_tag value for more "
+                              f"processing medias ")
+            if medias:
+                break
         return medias
 
     def get_media_url(self, media_id=None, shortcode=None):
@@ -813,8 +813,9 @@ class InstaBot:
         self.logger.info("Exit from loop GoodBye")
 
     def remove_already_liked_medias(self, medias):
-        return [media for media in medias if
-                not self.persistence.check_already_liked(media_id=media["node"]["id"])]
+        return [media for media in medias if not
+                self.persistence.check_already_liked(
+                    media_id=media['node']['id'])]
 
     def new_auto_mod_like(self, media):
         if self.iteration_ready("like") and media:
