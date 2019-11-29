@@ -89,7 +89,6 @@ class InstaBot:
 
         # Like
         self.like_per_run = int(self.config.get("like_per_run"))
-
         if self.like_per_run > 0:
             self.like_delay = self.time_in_day / self.like_per_run
 
@@ -147,7 +146,13 @@ class InstaBot:
         # Don't follow if user have less than n followers.
         self.user_min_follow = self.config.get("user_min_follow")
 
-        # Auto mod seting:
+        # Like your follower's medias
+        self.like_followers_per_run = self.config.get('like_followers_per_run')
+        if self.like_followers_per_run > 0:
+            self.like_followers_delay = \
+                self.time_in_day / self.like_followers_per_run
+
+        # Auto mod settings:
         # Default list of tag.
         self.tag_list = self.config.get("tag_list")
         # Default keywords.
@@ -167,6 +172,7 @@ class InstaBot:
 
         # All counters.
         self.like_counter = 0
+        self.like_followers_counter = 0
         self.unlike_counter = 0
         self.follow_counter = 0
         self.unfollow_counter = 0
@@ -603,36 +609,22 @@ class InstaBot:
     def like(self, media_id):
         """ Send http request to like media by ID """
         media_to_like_url = self.get_media_url(media_id)
-
         try:
-            self.logger.debug(f"Trying to like media: id: {media_id}, url: {media_to_like_url}")
-            resp = self.s.post(self.url_likes % (media_id))
+            resp = self.s.post(self.url_likes % media_id)
         except Exception as exc:
             logging.exception(exc)
             return False
 
         if resp.status_code == 200:
-            # Like is successful, all is ok!
-            self.error_400 = 0
-            self.like_counter += 1
             self.persistence.insert_media(media_id=media_id, status="200")
-            self.logger.info(f"Liked media #{self.like_counter}: id: {media_id}, " \
-                             f"url: {media_to_like_url}")
             return True
-        elif resp.status_code == 400:
-            self.logger.info(f"Could not like media: id: {media_id}, "
-                             f"url: {media_to_like_url}. Reason: {resp.text}")
-            self.persistence.insert_media(media_id=media_id, status="400", )
-
         else:
-            self.persistence.insert_media(
-                media_id=media_id,
-                status=str(resp.status_code),
-            )
-            self.logger.debug(f"Could not like media: id: {media_id}, "
-                              f"url: {media_to_like_url}, status code: {resp.status_code}. "
-                              f"Reason: {resp.text}")
-
+            self.persistence.insert_media(media_id=media_id,
+                                          status=str(resp.status_code))
+            self.logger.info(f"Could not like media: id: {media_id}, "
+                             f"url: {media_to_like_url}, "
+                             f"status code: {resp.status_code}. "
+                             f"Reason: {resp.text}")
         return False
 
     def unlike(self, media_id):
@@ -788,7 +780,7 @@ class InstaBot:
             self.new_auto_mod_unlike()
 
             if self.iteration_ready('follow') and self.follow_per_run and media:
-                self.init_next_interation('follow')
+                self.init_next_iteration('follow')
                 while self.follow_attempts > 0:
                     if not self.new_auto_mod_follow(media):
                         time.sleep(5)
@@ -809,8 +801,9 @@ class InstaBot:
 
             self.new_auto_mod_unfollow()
             self.new_auto_mod_comments(media)
+            self.like_followers_last_media()
 
-        self.logger.info("Exit from loop GoodBye")
+        self.logger.info("Exit from loop. GoodBye")
 
     def remove_already_liked_medias(self, medias):
         return [media for media in medias if not
@@ -818,15 +811,63 @@ class InstaBot:
                     media_id=media['node']['id'])]
 
     def new_auto_mod_like(self, media):
-        if self.iteration_ready("like") and media:
-            self.init_next_interation("like")
+        if self.iteration_ready('like') and media:
+            self.init_next_iteration('like')
             media_id = media['node']['id']
+            media_to_like_url = self.get_media_url(media_id)
+            self.logger.debug(f"Trying to like media #{self.like_counter + 1}: "
+                              f"id: {media_id}, url: {media_to_like_url}")
             if self.like(media_id):
+                self.error_400 = 0
+                self.like_counter += 1
+                self.logger.info(f"Liked media #{self.like_counter}: "
+                                 f"id: {media_id}, url: {media_to_like_url}")
                 return True
+        return False
+
+    def like_followers_last_media(self):
+        if self.iteration_ready('like_followers'):
+            self.init_next_iteration('like_followers')
+            follower = self.persistence.get_follower_to_like_random()
+            if not follower:
+                self.logger.debug("You don't have followers to like their "
+                                  "medias")
+                return False
+            url_tag = self.url_user_detail % follower.username
+            try:
+                r = self.s.get(url_tag)
+                if r.status_code != 200:
+                    return False
+                raw_data = re.search("window._sharedData = (.*?);</script>",
+                                     r.text, re.DOTALL).group(1)
+                media_id = json.loads(raw_data)['entry_data']['ProfilePage'][0][
+                    'graphql']['user']['edge_owner_to_timeline_media'][
+                    'edges'][0]['node']['id']
+                self.logger.debug(f"Trying to like media of your old follower "
+                                  f"#{self.like_followers_counter + 1}: "
+                                  f"{follower.username}")
+                media_to_like_url = self.get_media_url(media_id)
+                if not self.persistence.check_already_liked(media_id=media_id):
+                    if self.like(media_id):
+                        self.like_followers_counter += 1
+                        self.logger.info(
+                            f"Liked media of your follower {follower.username} "
+                            f"#{self.like_followers_counter}: id: {media_id}, "
+                            f"url: {media_to_like_url}")
+                        return True
+                else:
+                    self.logger.debug(
+                        f"You already liked media: id: {media_id}, url: "
+                        f"{media_to_like_url} of your follower "
+                        f"{follower.username}")
+            except Exception as exc:
+                self.logger.exception(exc)
+
+        return False
 
     def new_auto_mod_unlike(self):
         if self.iteration_ready("unlike"):
-            self.init_next_interation("unlike")
+            self.init_next_iteration("unlike")
             media_id = self.persistence.get_medias_to_unlike()
             if media_id:
                 self.logger.debug("Trying to unlike media")
@@ -951,7 +992,7 @@ class InstaBot:
 
     def new_auto_mod_unfollow(self):
         if self.iteration_ready('unfollow'):
-            self.init_next_interation('unfollow')
+            self.init_next_iteration('unfollow')
             user = self.persistence.get_username_to_unfollow_random()
             if user:
                 self.logger.debug(f"Trying to unfollow user "
@@ -1113,7 +1154,7 @@ class InstaBot:
     def new_auto_mod_comments(self, media):
         if self.iteration_ready('comments') and \
                 self.verify_media_before_comment(media):
-            self.init_next_interation('comments')
+            self.init_next_iteration('comments')
             comment_text = self.generate_comment()
             if "@username@" in comment_text:
                 comment_text = comment_text.replace('@username@', media[
@@ -1124,7 +1165,7 @@ class InstaBot:
             if not self.comment(media_id, comment_text):
                 self.persistence.insert_media(media['node']['id'], 'Error')
 
-    def init_next_interation(self, action):
+    def init_next_iteration(self, action):
         self.next_iteration[action] = self.generate_time(
             getattr(self, action + "_delay", -2 * time.time())) + time.time()
 

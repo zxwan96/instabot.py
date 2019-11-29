@@ -107,6 +107,21 @@ class Persistence(PersistenceBase):
         follower = self._session.query(Follower).filter(Follower.unfollow_count == 0).order_by(func.random()).first()
         return str(follower.username) if follower else None
 
+    def get_follower_to_like_random(self):
+        """ Gets random follower who was created earlier than 2 * follow_time
+        and has zero unfollow_count """
+        now_time = datetime.now()
+        if self.bot.follow_time > 0:
+            cut_off_time = now_time - \
+                           timedelta(seconds=self.bot.follow_time) - \
+                           timedelta(seconds=self.bot.follow_time)
+        else:
+            cut_off_time = now_time
+        return self._session.query(Follower) \
+            .filter(Follower.created < cut_off_time) \
+            .filter(Follower.unfollow_count == 0) \
+            .order_by(func.random()).first()
+
     def get_username_to_unfollow_random(self):
         """ Gets random username that is older than follow_time and has zero
         unfollow_count """

@@ -100,6 +100,7 @@ DEFAULT_CONFIG = {
     "unfollow_everyone": False,
     "tag_list": ["cat", "car", "dog"],
     "like_per_day": 296,
+    "like_followers_per_run": 20,
     "accept_language": "en-US,en;q=0.5",
     # If you have 3 400 error in row - looks like you banned.
     "error_400_to_ban": 3,
